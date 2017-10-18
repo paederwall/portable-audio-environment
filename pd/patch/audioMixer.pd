@@ -1,0 +1,5 @@
+#N canvas 1194 539 632 433 10;
+#X obj 142 158 dac~;
+#X obj 146 67 netreceive~ 3002 2;
+#X connect 1 0 0 0;
+#X connect 1 1 0 1;
