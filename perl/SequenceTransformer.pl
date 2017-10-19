@@ -5,8 +5,13 @@ use warnings;
 use strict;
 use Data::Dumper qw(Dumper);
 
+use Cwd;
+
+#use NoteHash qw(getNoteHash);
+
 # set current directory
-use constant DIR => q{"C:\Users\Pae\Desktop\puredata\sequencer"};
+#use constant DIR => q{"/Users/Pae/Desktop/portable-audio-environment/perl/sequencer"};
+use constant DIR => getcwd;
 chdir DIR;
 
 # Pulse per quarter note resolution
@@ -28,7 +33,8 @@ my @noteArray;
 my @velocityArray;
 
 # Get # of input files (each file is its own channel i.e. MIDI)
-my $currentDir = "/Users/Pae/Desktop/puredata/sequencer/input";
+#my $currentDir = "/Users/Pae/Desktop/portable-audio-environment/perl/input";
+my $currentDir = DIR . "/input/";
 opendir my $dir, $currentDir or die $1;
 my @inputFiles = readdir $dir;
 closedir $dir;
@@ -196,20 +202,20 @@ if ($totalArrays == 0) {
 # Create needed channel, note, and velocity output file handlers
 my @channelHandles;
 for my $h (0..($totalArrays - 1)) {
-	open $channelHandles[$h], '>', "transformed/c$h.txt";
+	open $channelHandles[$h], '>', "transform/c$h.txt";
 }
 my @noteHandles;
 for my $h (0..($totalArrays - 1)) {
-	open $noteHandles[$h], '>', "transformed/n$h.txt";
+	open $noteHandles[$h], '>', "transform/n$h.txt";
 }
 my @velocityHandles;
 for my $h (0..($totalArrays - 1)) {
-	open $velocityHandles[$h], '>', "transformed/v$h.txt";
+	open $velocityHandles[$h], '>', "transform/v$h.txt";
 }
 
 # Create loader output handler
 my $loaderHandle;
-open $loaderHandle, '>', "transformed/loader.txt";
+open $loaderHandle, '>', "transform/loader.txt";
 
 #print Dumper \@channelArray;
 
