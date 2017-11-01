@@ -7,7 +7,7 @@ use Data::Dumper qw(Dumper);
 
 use Cwd;
 
-#use NoteHash qw(getNoteHash);
+use NoteHash qw(getNoteHash);
 
 # set current directory
 #use constant DIR => q{"/Users/Pae/Desktop/portable-audio-environment/perl/sequencer"};
