@@ -7,7 +7,7 @@ use Data::Dumper qw(Dumper);
 
 use Cwd;
 
-use NoteHash qw(getNoteHash);
+#use NoteHash qw(getNoteHash);
 
 # set current directory
 #use constant DIR => q{"/Users/Pae/Desktop/portable-audio-environment/perl/sequencer"};
@@ -19,9 +19,6 @@ my $ppqn = 96;
 
 # Total arrays used to store data (multiple arrays are used for events that occur simultaneously
 my $totalArrays = 0;
-
-# Total lines in input file
-my $totalLines = 0;
 
 # Values for each line, entries for each datum
 my @values;
@@ -75,6 +72,7 @@ my %velocityHash = (
 	ffff	=> 127,
 );
 
+
 # Create needed channel, note, and velocity input file handlers
 my @inputHandles;
 {
@@ -85,94 +83,217 @@ my @inputHandles;
 	}
 }
 
-# Read the input file handlers
-{
-	my $channel = 0;
+readFiles(@inputHandles);
+
+sub readFiles {
 	my $index = 0;
-	for my $inputFile (@inputHandles) {
+	for my $file (@_) {
 		# Parse name of file to get channel number
 		my @textNames = split /\./, $inputFiles[$index];
-		$channel = $textNames[0];
-		# Reset line counter
-		$totalLines = 1;
-		# Read the input file, split lines into datum and copy data to arrays
-		while (my $line = <$inputFile>) {
-			# Split the line by space character
-			@entries = split / /, $line;
-			for my $datum (@entries) {
-				# Check for parenthesis, if so get the multiplier
-				my $multiplier = 1;
-				if ($datum =~ m/(\d+)\((.*)\)/) {
-					$multiplier = $1;
-					$datum = $2;
-				}
-				# Split the datum by dot character
-				@values = split /\./, $datum;
-				# 0 position
-				my $position = 0;
-				# Multiplier loop
-				for my $m (1..$multiplier) {
-					# Check if at least 3 elements in values array (note, velocity and length, optional offset)
-					if ((scalar @values) >= 3) {
-						# Set note position offset to 0, then check if there is offset data
-						my $offset = 0;
-						if (defined $values[3]) {
-							$offset = ($ppqn * 4) / $values[3];
-						}
-						# Check if note needs look up in hash table
-						if ($values[0] =~ m/[a-g].*/) {
-							$values[0] = $noteHash{$values[0]};
-						}
-						# Check if velocity needs look up in hash table
-						if ($values[1] =~ m/[pmf].*/) {
-							$values[1] = $velocityHash{$values[1]};
-						}
-						# Get initial position for note in array
-						if ($m == 1) {
-							$position = ($totalLines * $ppqn) + $offset;
-						} else {
-							$position = $position + 1;
-						}
-						# Counter to track array in use
-						my $counter = 0;
-						# Check if start data already in position, if so increment counter
-						while (defined $noteArray[$counter][$position]) {
-							++$counter;
-							# Track total arrays used
-							if ($totalArrays < ($counter + 1)) {
-								$totalArrays = ($counter + 1);
-							}
-						}
-						# Copy start channel, note, and velocity to array
-						$channelArray[$counter][$position] = $channel;
-						$noteArray[$counter][$position] = $values[0];
-						$velocityArray[$counter][$position] = $values[1];
-						# Get end of note position
-						$position = ($position + (($ppqn * 4) / $values[2]) - 1);
-						# Reset counter
-						$counter = 0;
-						# Check if end data already in position, if so increment counter
-						while (defined $noteArray[$counter][$position]) {
-							++$counter;
-							# Track total arrays used
-							if ($totalArrays < ($counter + 1)) {
-								$totalArrays = ($counter + 1);
-							}
-						}
-						# Copy end channel, note, and velocity to array
-						$channelArray[$counter][$position] = $channel;
-						$noteArray[$counter][$position] = $values[0];
-						$velocityArray[$counter][$position] = 0;
-					}
-				}
-			}
-			# Track total number of lines in input file
-			++$totalLines;
-			# Empty values array (in case next line is empty)
-			@values = ();
-		}
+		my $channel = $textNames[0];
+
+		readLines($file, \$channel);
 		++$index;
 	}
+}
+
+sub readLines {
+	my ($fileRef, $channelRef) = @_;
+	my $totalLines = 1;
+	while (my $line = <$fileRef>) {
+		# If line is blank, skip it
+		if ($line !~ m/^\s*$/) {
+			readEntries(\$line, $channelRef, \$totalLines);
+		}
+		++$totalLines;
+	}
+}
+
+sub readEntries {
+	my ($lineRef, $channelRef, $totalLinesRef) = @_;
+	# Split the line by space character
+	my @entries = split / /, $$lineRef;
+	for my $datum (@entries) {
+		# Check for parenthesis, if so get the multiplier
+		my $multiplier = 1;
+		if ($datum =~ m/(\d+)\((.*)\)/) {
+			$multiplier = $1;
+			$datum = $2;
+		}
+		# Split the datum by dot character
+		my @values = split /\./, $datum;
+
+		my $notes = $values[0];
+		my $velocities = $values[1];
+		my $length = $values[2];
+		my $offset = 0;
+		if (defined $values[3]) {
+			$offset = $values[3];
+		}
+
+		loopMultiplier(
+			$channelRef, $totalLinesRef, \$multiplier,
+			\$notes, \$velocities, \$length,
+			\$offset
+		);
+	}
+}
+
+sub loopMultiplier {
+	my (
+		$channelRef, $totalLinesRef, $multiplierRef,
+		$notesRef, $velocitiesRef, $lengthRef,
+		$offsetRef
+	) = @_;
+
+	# $position is used to specify where notes are positioned
+	# in output arrays.  The $multiplier and multiple values
+	# in the $datum (e.g. c6,c5.127.4) allow sequencial
+	# placement of notes.
+	my $position = 0;
+	for my $m (1..$$multiplierRef) {
+		loopNotes(
+			$channelRef, $totalLinesRef, $multiplierRef,
+			$notesRef, $velocitiesRef, $lengthRef,
+			$offsetRef, \$position
+		);
+	}
+}
+
+sub loopNotes {
+	my (
+		$channelRef, $totalLinesRef, $multiplierRef,
+		$notesRef, $velocitiesRef, $lengthRef,
+		$offsetRef, $positionRef
+	) = @_;
+
+	# Split note value by comma
+	my @splitNotes = split /,/, $$notesRef;
+	my $noteCounter = 0;
+	for my $currentNote (@splitNotes) {
+		setNoteData(
+			$channelRef, $totalLinesRef, $multiplierRef,
+			\@splitNotes, $velocitiesRef, $lengthRef,
+			$offsetRef, $positionRef, \$noteCounter
+		);
+
+		++$noteCounter;
+	}
+}
+
+sub setNoteData {
+	my (
+		$channelRef, $totalLinesRef, $multiplierRef,
+		$notesRef, $velocitiesRef, $lengthRef,
+		$offsetRef, $positionRef, $noteCounterRef
+	) = @_;
+
+	# Set the start position
+	setStartPosition(
+		$totalLinesRef, $offsetRef, $positionRef,
+		$noteCounterRef
+	);
+
+	# Check if note and velocity values need to be converted from
+	# symbols to numbers (e.g. note c5 -> 60,  velocity mf -> 72)
+	lookupNoteHash($notesRef, $noteCounterRef);
+	lookupVelocityHash($velocitiesRef, $noteCounterRef);
+
+	# Handle simultaneous events by incrementing arrays in use
+	my $arrayCounter = 0;
+	checkDefined(\$arrayCounter, $positionRef);
+
+	# Set the actual channel, note, and velocity start data in
+	# the array and position calculated above
+	setChannelArray(\$arrayCounter, $positionRef, $channelRef);
+	setNoteArray(\$arrayCounter, $positionRef, $notesRef, $noteCounterRef);
+	setVelocityArray(\$arrayCounter, $positionRef, $velocitiesRef);
+
+	# Set the end position
+	setEndPosition($lengthRef, $positionRef);
+
+	# Reset $arrayCounter to 0 and check simultaneous events
+	# for end data
+	$arrayCounter = 0;
+	checkDefined(\$arrayCounter, $positionRef);
+
+	# Set the actual channel, note, and velocity (0) end data in
+	# the array and position calculated above
+	setChannelArray(\$arrayCounter, $positionRef, $channelRef);
+	setNoteArray(\$arrayCounter, $positionRef, $notesRef, $noteCounterRef);
+	setEndVelocityArray(\$arrayCounter, $positionRef);
+}
+
+sub setStartPosition {
+	my (
+		$totalLinesRef, $offsetRef, $positionRef,
+		$noteCounterRef
+	) = @_;
+
+	# Get initial position for note in array
+	if ($$noteCounterRef == 0) {
+		$$positionRef = ($$totalLinesRef * $ppqn) + $$offsetRef;
+	} else {
+		$$positionRef = $$positionRef + 1;
+	}
+}
+
+sub lookupNoteHash {
+	my ($notesRef, $noteCounterRef) = @_;
+	# Check if note needs look up in hash table
+	if ($notesRef->[$$noteCounterRef] =~ m/[a-g].*/) {
+		$notesRef->[$$noteCounterRef] = $noteHash{$notesRef->[$$noteCounterRef]};
+	}
+}
+
+sub lookupVelocityHash {
+	my ($velocitiesRef) = @_;
+	# Check if velocity needs look up in hash table
+	if ($velocitiesRef =~ m/[pmf].*/) {
+		$$velocitiesRef = $velocityHash{$$velocitiesRef};
+	}
+}
+
+sub checkDefined {
+	my ($arrayCounterRef, $positionRef) = @_;
+	# Check if start data already in position, if so increment counter
+	while (defined $noteArray[$$arrayCounterRef][$$positionRef]) {
+		++$$arrayCounterRef;
+		# Track total arrays used
+		if ($totalArrays < ($$arrayCounterRef + 1)) {
+			$totalArrays = ($$arrayCounterRef + 1);
+		}
+	}
+}
+
+sub setChannelArray {
+	my ($arrayCounterRef, $positionRef, $channelRef) = @_;
+	$channelArray[$$arrayCounterRef][$$positionRef] = $$channelRef;
+}
+
+sub setNoteArray {
+	my (
+		$arrayCounterRef, $positionRef, $notesRef,
+		$noteCounterRef
+	) = @_;
+
+	$noteArray[$$arrayCounterRef][$$positionRef] = $notesRef->[$$noteCounterRef];
+}
+
+sub setVelocityArray {
+	my ($arrayCounterRef, $positionRef, $velocitiesRef) = @_;
+	$velocityArray[$$arrayCounterRef][$$positionRef] = $$velocitiesRef;
+}
+
+sub setEndVelocityArray {
+	my ($arrayCounterRef, $positionRef) = @_;
+	$velocityArray[$$arrayCounterRef][$$positionRef] = 0;
+}
+
+sub setEndPosition {
+	my ($lengthRef, $positionRef) = @_;
+	# Get end of note position
+	$$positionRef = $$positionRef + (($ppqn * 4) / $$lengthRef) - 1;
 }
 
 # Remove blank leading 96 elements (results from ppqn calculations above)
