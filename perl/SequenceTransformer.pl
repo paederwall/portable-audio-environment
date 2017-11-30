@@ -249,7 +249,7 @@ sub lookupNoteHash {
 sub lookupVelocityHash {
 	my ($velocitiesRef) = @_;
 	# Check if velocity needs look up in hash table
-	if ($velocitiesRef =~ m/[pmf].*/) {
+	if ($$velocitiesRef =~ m/[pmf].*/) {
 		$$velocitiesRef = $velocityHash{$$velocitiesRef};
 	}
 }
