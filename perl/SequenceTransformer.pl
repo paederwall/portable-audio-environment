@@ -20,10 +20,6 @@ my $ppqn = 96;
 # Total arrays used to store data (multiple arrays are used for events that occur simultaneously
 my $totalArrays = 0;
 
-# Values for each line, entries for each datum
-my @values;
-my @entries;
-
 # Arrays to copy data to output files
 my @channelArray;
 my @noteArray;
@@ -83,6 +79,7 @@ my @inputHandles;
 	}
 }
 
+# Main array building loop
 readFiles(@inputHandles);
 
 sub readFiles {
@@ -260,8 +257,8 @@ sub checkDefined {
 	while (defined $noteArray[$$arrayCounterRef][$$positionRef]) {
 		++$$arrayCounterRef;
 		# Track total arrays used
-		if ($totalArrays < ($$arrayCounterRef + 1)) {
-			$totalArrays = ($$arrayCounterRef + 1);
+		if ($totalArrays < $$arrayCounterRef) {
+			$totalArrays = $$arrayCounterRef;
 		}
 	}
 }
@@ -298,40 +295,33 @@ sub setEndPosition {
 
 # Remove blank leading 96 elements (results from ppqn calculations above)
 {
-	for my $array (@channelArray) {
-		for my $e (0..95) {
-			shift @$array;
-		}
-	}
-	for my $array (@noteArray) {
-		for my $e (0..95) {
-			shift @$array;
-		}
-	}
-	for my $array (@velocityArray) {
+	my @outputArrays = (@channelArray, @noteArray, @velocityArray);
+	for my $array (@outputArrays) {
 		for my $e (0..95) {
 			shift @$array;
 		}
 	}
 }
 
-# Set totalarrays to 1 if still 0
-if ($totalArrays == 0) {
-	$totalArrays = 1;
-}
-
-# Create needed channel, note, and velocity output file handlers
+# Open output file handlers
 my @channelHandles;
-for my $h (0..($totalArrays - 1)) {
-	open $channelHandles[$h], '>', "transform/c$h.txt";
-}
 my @noteHandles;
-for my $h (0..($totalArrays - 1)) {
-	open $noteHandles[$h], '>', "transform/n$h.txt";
-}
 my @velocityHandles;
-for my $h (0..($totalArrays - 1)) {
-	open $velocityHandles[$h], '>', "transform/v$h.txt";
+{
+	my %outputHandlesFilenameHash = (
+		"c" => \@channelHandles,
+		"n" => \@noteHandles,
+		"v" => \@velocityHandles,
+	);
+
+	keys %outputHandlesFilenameHash;
+	while (my ($k, $v) = each %outputHandlesFilenameHash) {
+		for my $array ($v) {
+			for my $h (0..$totalArrays) {
+				open $$array[$h], '>', "transform/$k$h.txt";
+			}
+		}
+	}
 }
 
 # Create loader output handler
@@ -340,45 +330,19 @@ open $loaderHandle, '>', "transform/loader.txt";
 
 #print Dumper \@channelArray;
 
-# Copy array data to channel file
-{
-	my $counter = 0;
-	for my $array (@channelArray) {
-		for my $channel (@$array) {
-			if (defined $channel) {
-				print {$channelHandles[$counter]} "$channel\n";
-			} else {
-				print {$channelHandles[$counter]} "0\n";
-			}
-		}
-	++$counter;
-	}
-}
+# Copy data from output arrays to output handlers
+my @outputArrays = (@channelArray, @noteArray, @velocityArray);
+my @outputHandles = (@channelHandles, @noteHandles, @velocityHandles);
+my @outputArrHnd = (\@outputArrays, \@outputHandles);
 
-# Copy array data to note file
-{
+for my $n (0..2) {
 	my $counter = 0;
-	for my $array (@noteArray) {
-		for my $note (@$array) {
-			if (defined $note) {
-				print {$noteHandles[$counter]} "$note\n";
+	for my $array ($outputArrHnd[0]->[$n]) {
+		for my $data (@$array) {
+			if (defined $data) {
+				print {$outputArrHnd[1]->[$n]} "$data\n";
 			} else {
-				print {$noteHandles[$counter]} "0\n";
-			}
-		}
-	++$counter;
-	}
-}
-
-# Copy array data to velocity file
-{
-	my $counter = 0;
-	for my $array (@velocityArray) {
-		for my $velocity (@$array) {
-			if (defined $velocity) {
-				print {$velocityHandles[$counter]} "$velocity\n";
-			} else {
-				print {$velocityHandles[$counter]} "0\n";
+				print {$outputArrHnd[1]->[$n]} "0\n";
 			}
 		}
 	++$counter;
@@ -391,4 +355,5 @@ print {$loaderHandle} "length $arrayLength\n";
 print {$loaderHandle} "totalfiles $totalArrays\n";
 
 print "\n$arrayLength lines in output files.";
+++$totalArrays;
 print "\n$totalArrays arrays created.";
