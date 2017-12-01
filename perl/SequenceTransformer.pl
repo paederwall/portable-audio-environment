@@ -303,6 +303,17 @@ sub setEndPosition {
 	}
 }
 
+# Clear transform folder
+my $errors;
+while ($_ = glob('transform/*.txt')) {
+   next if -d $_;
+   unlink($_)
+      or ++$errors, warn("Can't remove $_: $!");
+}
+
+exit(1) if $errors;
+
+
 # Open output file handlers
 my @channelHandles;
 my @noteHandles;
