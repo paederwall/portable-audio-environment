@@ -150,7 +150,7 @@ sub loopMultiplier {
 	my $position = 0;
 	for my $m (1..$$multiplierRef) {
 		loopNotes(
-			$channelRef, $totalLinesRef, $multiplierRef,
+			$channelRef, $totalLinesRef, \$m,
 			$notesRef, $velocitiesRef, $lengthRef,
 			$offsetRef, \$position
 		);
@@ -187,8 +187,8 @@ sub setNoteData {
 
 	# Set the start position
 	setStartPosition(
-		$totalLinesRef, $offsetRef, $positionRef,
-		$noteCounterRef
+		$totalLinesRef, $multiplierRef, $offsetRef,
+		$positionRef, $noteCounterRef
 	);
 
 	# Check if note and velocity values need to be converted from
@@ -223,12 +223,12 @@ sub setNoteData {
 
 sub setStartPosition {
 	my (
-		$totalLinesRef, $offsetRef, $positionRef,
-		$noteCounterRef
+		$totalLinesRef, $multiplierRef, $offsetRef,
+		$positionRef,	$noteCounterRef
 	) = @_;
 
 	# Get initial position for note in array
-	if ($$noteCounterRef == 0) {
+	if (($$noteCounterRef == 0) && ($$multiplierRef == 1)) {
 		$$positionRef = ($$totalLinesRef * $ppqn) + $$offsetRef;
 	} else {
 		$$positionRef = $$positionRef + 1;
@@ -350,10 +350,10 @@ for my $n (0..2) {
 }
 
 # Copy data to loader file
+++$totalArrays;
 my $arrayLength = scalar @{ $noteArray[0] };
 print {$loaderHandle} "length $arrayLength\n";
 print {$loaderHandle} "totalfiles $totalArrays\n";
 
 print "\n$arrayLength lines in output files.";
-++$totalArrays;
 print "\n$totalArrays arrays created.";
