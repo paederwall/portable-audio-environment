@@ -339,25 +339,22 @@ my @velocityHandles;
 my $loaderHandle;
 open $loaderHandle, '>', "transform/loader.txt";
 
-#print Dumper \@channelArray;
+#print Dumper \@velocityArray;
 
 # Copy data from output arrays to output handlers
 my @outputArrays = (@channelArray, @noteArray, @velocityArray);
 my @outputHandles = (@channelHandles, @noteHandles, @velocityHandles);
-my @outputArrHnd = (\@outputArrays, \@outputHandles);
 
-for my $n (0..2) {
-	my $counter = 0;
-	for my $array ($outputArrHnd[0]->[$n]) {
-		for my $data (@$array) {
-			if (defined $data) {
-				print {$outputArrHnd[1]->[$n]} "$data\n";
-			} else {
-				print {$outputArrHnd[1]->[$n]} "0\n";
-			}
+my $count = 0;
+for my $array (@outputArrays) {
+	for my $data (@$array) {
+		if (defined $data) {
+			print {$outputHandles[$count]} "$data\n";
+		} else {
+			print {$outputHandles[$count]} "0\n";
 		}
-	++$counter;
 	}
+	++$count;
 }
 
 # Copy data to loader file
