@@ -121,6 +121,9 @@ sub readEntries {
 		my @values = split /\./, $datum;
 
 		my $notes = $values[0];
+		if ($notes =~ m/-/) {
+
+		}
 		my $velocities = $values[1];
 		my $length = $values[2];
 		my $offset = 0;
@@ -149,14 +152,47 @@ sub loopMultiplier {
 	# placement of notes.
 	my $position = 0;
 	for my $m (1..$$multiplierRef) {
-		loopNotes(
+
+		my $note = $$notesRef;
+		my $velocity = $$velocitiesRef;
+
+		# Check if notes contain - , which tells us to interpolate
+		if ($$notesRef =~ m/([^-].*)-([^-].*)/) {
+			my $y0 = $1;
+			my $y1 = $2;
+			# Check if note and velocity values need to be converted from
+			# symbols to numbers (e.g. note c5 -> 60,  velocity mf -> 72)
+			lookupNoteHash(\$y0);
+			lookupNoteHash(\$y1);
+			$note = interp(\$m, $multiplierRef, \$y0, \$y1);
+		}
+
+		# Check if velocities contain - , which tells us to interpolate
+		if ($$velocitiesRef =~ m/([^-].*)-([^-].*)/) {
+			my $y0 = $1;
+			my $y1 = $2;
+			# Check if note and velocity values need to be converted from
+			# symbols to numbers (e.g. note c5 -> 60,  velocity mf -> 72)
+			lookupVelocityHash(\$y0);
+			lookupVelocityHash(\$y1);
+			$velocity = interp(\$m, $multiplierRef, \$y0, \$y1);
+		}
+
+		setNoteData(
 			$channelRef, $totalLinesRef, \$m,
-			$notesRef, $velocitiesRef, $lengthRef,
+			\$note, \$velocity, $lengthRef,
 			$offsetRef, \$position
 		);
+
+		#loopNotes(
+		#	$channelRef, $totalLinesRef, \$m,
+		#	$notesRef, $velocitiesRef, $lengthRef,
+		#	$offsetRef, \$position
+		#);
 	}
 }
 
+=pod
 sub loopNotes {
 	my (
 		$channelRef, $totalLinesRef, $multiplierRef,
@@ -177,24 +213,25 @@ sub loopNotes {
 		++$noteCounter;
 	}
 }
+=cut
 
 sub setNoteData {
 	my (
 		$channelRef, $totalLinesRef, $multiplierRef,
-		$notesRef, $velocitiesRef, $lengthRef,
-		$offsetRef, $positionRef, $noteCounterRef
+		$noteRef, $velocityRef, $lengthRef,
+		$offsetRef, $positionRef
 	) = @_;
 
 	# Set the start position
 	setStartPosition(
 		$totalLinesRef, $multiplierRef, $offsetRef,
-		$positionRef, $noteCounterRef
+		$positionRef
 	);
 
 	# Check if note and velocity values need to be converted from
 	# symbols to numbers (e.g. note c5 -> 60,  velocity mf -> 72)
-	lookupNoteHash($notesRef, $noteCounterRef);
-	lookupVelocityHash($velocitiesRef, $noteCounterRef);
+	lookupNoteHash($noteRef);
+	lookupVelocityHash($velocityRef);
 
 	# Handle simultaneous events by incrementing arrays in use
 	my $arrayCounter = 0;
@@ -203,8 +240,8 @@ sub setNoteData {
 	# Set the actual channel, note, and velocity start data in
 	# the array and position calculated above
 	setChannelArray(\$arrayCounter, $positionRef, $channelRef);
-	setNoteArray(\$arrayCounter, $positionRef, $notesRef, $noteCounterRef);
-	setVelocityArray(\$arrayCounter, $positionRef, $velocitiesRef);
+	setNoteArray(\$arrayCounter, $positionRef, $noteRef);
+	setVelocityArray(\$arrayCounter, $positionRef, $velocityRef);
 
 	# Set the end position
 	setEndPosition($lengthRef, $positionRef);
@@ -217,37 +254,54 @@ sub setNoteData {
 	# Set the actual channel, note, and velocity (0) end data in
 	# the array and position calculated above
 	setChannelArray(\$arrayCounter, $positionRef, $channelRef);
-	setNoteArray(\$arrayCounter, $positionRef, $notesRef, $noteCounterRef);
+	setNoteArray(\$arrayCounter, $positionRef, $noteRef);
 	setEndVelocityArray(\$arrayCounter, $positionRef);
+}
+
+sub interp {
+	my ($xRef, $x1Ref, $y0Ref, $y1Ref) = @_;
+	my $x0 = 1;
+	# Interpolate for y to calculate the current note or velocity
+	# using current multiplier as x, 1 as x0, max multiplier as x1,
+	# y0 and y1 as the input values
+
+	my $y = 0;
+	$y = ($$y0Ref * ($$x1Ref - $$xRef) + $$y1Ref * ($$xRef - $x0)) / ($$x1Ref - $x0);
+
+	return $y;
 }
 
 sub setStartPosition {
 	my (
 		$totalLinesRef, $multiplierRef, $offsetRef,
-		$positionRef,	$noteCounterRef
+		$positionRef
 	) = @_;
 
 	# Get initial position for note in array
-	if (($$noteCounterRef == 0) && ($$multiplierRef == 1)) {
-		$$positionRef = ($$totalLinesRef * $ppqn) + $$offsetRef;
+	if ($$multiplierRef == 1) {
+		if ($$offsetRef == 0) {
+			$$positionRef = ($$totalLinesRef * $ppqn);
+		} else {
+			$$positionRef = ($$totalLinesRef * $ppqn) + (($ppqn * 4) / $$offsetRef);
+		}
 	} else {
 		$$positionRef = $$positionRef + 1;
 	}
 }
 
 sub lookupNoteHash {
-	my ($notesRef, $noteCounterRef) = @_;
+	my ($noteRef) = @_;
 	# Check if note needs look up in hash table
-	if ($notesRef->[$$noteCounterRef] =~ m/[a-g].*/) {
-		$notesRef->[$$noteCounterRef] = $noteHash{$notesRef->[$$noteCounterRef]};
+	if ($$noteRef =~ m/[a-g].*/) {
+		$$noteRef = $noteHash{$$noteRef};
 	}
 }
 
 sub lookupVelocityHash {
-	my ($velocitiesRef) = @_;
+	my ($velocityRef) = @_;
 	# Check if velocity needs look up in hash table
-	if ($$velocitiesRef =~ m/[pmf].*/) {
-		$$velocitiesRef = $velocityHash{$$velocitiesRef};
+	if ($$velocityRef =~ m/[pmf].*/) {
+		$$velocityRef = $velocityHash{$$velocityRef};
 	}
 }
 
@@ -269,17 +323,14 @@ sub setChannelArray {
 }
 
 sub setNoteArray {
-	my (
-		$arrayCounterRef, $positionRef, $notesRef,
-		$noteCounterRef
-	) = @_;
+	my ($arrayCounterRef, $positionRef, $noteRef) = @_;
 
-	$noteArray[$$arrayCounterRef][$$positionRef] = $notesRef->[$$noteCounterRef];
+	$noteArray[$$arrayCounterRef][$$positionRef] = $$noteRef;
 }
 
 sub setVelocityArray {
-	my ($arrayCounterRef, $positionRef, $velocitiesRef) = @_;
-	$velocityArray[$$arrayCounterRef][$$positionRef] = $$velocitiesRef;
+	my ($arrayCounterRef, $positionRef, $velocityRef) = @_;
+	$velocityArray[$$arrayCounterRef][$$positionRef] = $$velocityRef;
 }
 
 sub setEndVelocityArray {
